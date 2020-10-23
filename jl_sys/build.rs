@@ -102,7 +102,6 @@ fn flags() -> Vec<String> {
             let jl_include_path = format!("-I{}/include/julia/", julia_dir);
             let jl_lib_path = format!("-L{}/lib/", julia_dir);
 
-            println!("cargo:rustc-link-search={}/lib/", julia_dir);
             println!("cargo:rustc-flags={}", &jl_lib_path);
             vec![jl_include_path, jl_lib_path]
         }
