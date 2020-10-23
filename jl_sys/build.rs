@@ -4,6 +4,7 @@ use std::collections::HashSet;
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 // Many thanks to this comment on Github:
 // https://github.com/rust-lang/rust-bindgen/issues/687#issuecomment-450750547
@@ -33,6 +34,30 @@ fn find_julia() -> Option<String> {
     None
 }
 
+//TODO: Handle the unwraps better
+fn find_interpreter_abs_path() -> PathBuf {
+    let interpreter_path =
+        String::from_utf8(Command::new("which").arg("julia").output().unwrap().stdout)
+            .unwrap()
+            .trim()
+            .to_string();
+
+    let interpreter_abs_path =
+        fs::canonicalize(interpreter_path).expect("No julia interpreter found");
+
+    interpreter_abs_path
+}
+
+#[cfg(target_os = "macos")]
+fn find_julia() -> Option<String> {
+    if let Ok(path) = env::var("JULIA_DIR") {
+        return Some(path);
+    }
+
+    let interpreter_abs_path = find_interpreter_abs_path().parent()?.parent()?.to_owned();
+    Some(interpreter_abs_path.to_str()?.into())
+}
+
 #[cfg(target_os = "windows")]
 fn flags() -> Vec<String> {
     let julia_dir = env::var("JULIA_DIR").expect("Julia cannot be found. You can specify the Julia installation path with the JULIA_DIR environment variable.");
@@ -60,6 +85,24 @@ fn flags() -> Vec<String> {
             let jl_include_path = format!("-I{}/include/julia/", julia_dir);
             let jl_lib_path = format!("-L{}/lib/", julia_dir);
 
+            println!("cargo:rustc-flags={}", &jl_lib_path);
+            vec![jl_include_path, jl_lib_path]
+        }
+        None => Vec::new(),
+    };
+
+    println!("cargo:rustc-link-lib=julia");
+    flags
+}
+
+#[cfg(target_os = "macos")]
+fn flags() -> Vec<String> {
+    let flags = match find_julia() {
+        Some(julia_dir) => {
+            let jl_include_path = format!("-I{}/include/julia/", julia_dir);
+            let jl_lib_path = format!("-L{}/lib/", julia_dir);
+
+            println!("cargo:rustc-link-search={}/lib/", julia_dir);
             println!("cargo:rustc-flags={}", &jl_lib_path);
             vec![jl_include_path, jl_lib_path]
         }
@@ -297,7 +340,7 @@ fn main() {
         .rustfmt_bindings(true)
         .generate()
         .expect("Unable to generate bindings");
-        
+
     // Write the bindings to the $OUT_DIR/bindings.rs file.
     bindings
         .write_to_file(&out_path)
